@@ -18,17 +18,28 @@ API_RETRY_DELAYS = [2, 8, 32]  # exponential backoff seconds
 RETRYABLE_STATUS_CODES = (429, 500, 503)
 
 
+MAX_ITEMS_PER_PROVIDER = 150
+MAX_PROMPT_CHARS = 400_000  # ~100K tokens, safely under 200K limit
+
+
 def build_summarize_prompt(content: dict) -> str:
     """Load prompts/summarize.txt and inject the content dict as a formatted string.
 
     The user message includes all ContentItems grouped by provider,
-    serialized as a readable list.
+    serialized as a readable list. Caps items per provider and total
+    prompt length to stay within API token limits.
     """
     lines = []
     for provider in ("anthropic", "openai", "gemini"):
         items = content.get(provider, [])
         if not items:
             continue
+        if len(items) > MAX_ITEMS_PER_PROVIDER:
+            logger.warning(
+                "Capping %s from %d to %d items in prompt",
+                provider, len(items), MAX_ITEMS_PER_PROVIDER,
+            )
+            items = items[:MAX_ITEMS_PER_PROVIDER]
         lines.append(f"## {provider.upper()} ({len(items)} items)")
         for item in items:
             lines.append(f"- **{item.get('title', 'Untitled')}**")
@@ -42,7 +53,14 @@ def build_summarize_prompt(content: dict) -> str:
         for err in content["errors"]:
             lines.append(f"- {err['source']}: {err['error']}")
 
-    return "\n".join(lines)
+    result = "\n".join(lines)
+    if len(result) > MAX_PROMPT_CHARS:
+        logger.warning(
+            "Prompt too long (%d chars), truncating to %d",
+            len(result), MAX_PROMPT_CHARS,
+        )
+        result = result[:MAX_PROMPT_CHARS] + "\n\n[TRUNCATED — content exceeded limit]"
+    return result
 
 
 def summarize(content: dict) -> dict:

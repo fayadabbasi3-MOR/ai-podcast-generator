@@ -7,11 +7,13 @@ from bs4 import BeautifulSoup
 from lxml import etree
 
 from src.config import ANTHROPIC_API_KEY
+from src.diff import diff_models, diff_scrape, diff_sitemap
 
 logger = logging.getLogger(__name__)
 
 USER_AGENT = "AIPodcastBot/1.0"
 REQUEST_TIMEOUT = 30
+MAX_SITEMAP_ITEMS = 100  # Safety cap per sitemap source
 
 
 def fetch_rss(url: str, since_days: int = 7) -> list[dict]:
@@ -195,23 +197,53 @@ def ingest_all(sources: list[dict], since_days: int = 7) -> dict:
                 items = fetch_atom(url, since_days)
             elif method == "scrape":
                 text = scrape_page(url, source.get("css_selector", "body"))
-                # Scrape returns raw text — wrap as a single ContentItem
-                items = [
-                    {
-                        "title": name,
-                        "url": url,
-                        "summary": _truncate(text, 500),
-                        "published": datetime.now(timezone.utc).isoformat(),
-                        "source_name": name,
-                        "provider": provider,
-                        "method": "scrape",
-                    }
-                ] if text.strip() else []
+                if not text.strip():
+                    items = []
+                else:
+                    # Diff against previous snapshot — None means unchanged
+                    try:
+                        diffed = diff_scrape(name, text)
+                    except Exception as e:
+                        logger.warning("Diff failed for %s, using raw text: %s", name, e)
+                        diffed = text
+                    if diffed is None:
+                        items = []
+                    else:
+                        items = [
+                            {
+                                "title": name,
+                                "url": url,
+                                "summary": _truncate(diffed, 500),
+                                "published": datetime.now(timezone.utc).isoformat(),
+                                "source_name": name,
+                                "provider": provider,
+                                "method": "scrape",
+                            }
+                        ]
             elif method == "sitemap":
                 url_map = fetch_sitemap(url)
-                # Sitemap returns {url: lastmod} — wrap as ContentItems
-                items = [
-                    {
+                # Diff against previous snapshot — only new/changed URLs
+                try:
+                    new_urls = diff_sitemap(name, url_map)
+                except Exception as e:
+                    logger.warning("Diff failed for %s, using date filter only: %s", name, e)
+                    new_urls = list(url_map.keys())
+
+                # Filter by lastmod date (within since_days)
+                cutoff = datetime.now(timezone.utc) - timedelta(days=since_days)
+                items = []
+                for u in new_urls:
+                    lastmod = url_map.get(u)
+                    if lastmod:
+                        parsed_dt = _parse_lastmod(lastmod)
+                        if parsed_dt and parsed_dt < cutoff:
+                            continue
+                    else:
+                        # No lastmod — skip if no snapshot exists (first run)
+                        # Diff already handled subsequent runs
+                        continue
+
+                    items.append({
                         "title": u.split("/")[-1] or u,
                         "url": u,
                         "summary": "",
@@ -219,11 +251,23 @@ def ingest_all(sources: list[dict], since_days: int = 7) -> dict:
                         "source_name": name,
                         "provider": provider,
                         "method": "sitemap",
-                    }
-                    for u, lastmod in url_map.items()
-                ]
+                    })
+
+                # Safety cap
+                if len(items) > MAX_SITEMAP_ITEMS:
+                    logger.warning(
+                        "Capping %s from %d to %d items",
+                        name, len(items), MAX_SITEMAP_ITEMS,
+                    )
+                    items = items[:MAX_SITEMAP_ITEMS]
             elif method == "api":
                 models = fetch_anthropic_models(ANTHROPIC_API_KEY)
+                # Diff against previous snapshot — only new models
+                try:
+                    new_models = diff_models(name, models)
+                except Exception as e:
+                    logger.warning("Diff failed for %s, using all models: %s", name, e)
+                    new_models = models
                 items = [
                     {
                         "title": m["display_name"],
@@ -234,7 +278,7 @@ def ingest_all(sources: list[dict], since_days: int = 7) -> dict:
                         "provider": provider,
                         "method": "api",
                     }
-                    for m in models
+                    for m in new_models
                 ]
             else:
                 logger.warning("Unknown method '%s' for source %s", method, name)
@@ -271,6 +315,23 @@ def _parse_feed_date(entry) -> datetime | None:
             except (ValueError, OverflowError):
                 continue
     return None
+
+
+def _parse_lastmod(lastmod: str) -> datetime | None:
+    """Parse a sitemap lastmod string into a timezone-aware datetime."""
+    try:
+        s = lastmod.strip()
+        # Handle "2026-02-25" (date only)
+        if len(s) == 10:
+            s += "T00:00:00+00:00"
+        # Handle "Z" suffix
+        s = s.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except (ValueError, AttributeError):
+        return None
 
 
 def _truncate(text: str, max_chars: int) -> str:

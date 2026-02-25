@@ -1,0 +1,102 @@
+name: Generate Weekly Podcast Episode
+
+on:
+  schedule:
+    - cron: '0 1 * * 4'  # 01:00 UTC Thursday = Wednesday 8 PM Eastern
+  workflow_dispatch:       # Manual trigger for testing
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      # ── Setup ──────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history — needed for snapshot branch access
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      # ── Credentials ────────────────────────────────
+      - name: Decode Google TTS credentials
+        run: |
+          echo "${{ secrets.GOOGLE_TTS_CREDENTIALS }}" | base64 -d > /tmp/gcloud-tts.json
+
+      # ── Run Pipeline ───────────────────────────────
+      - name: Run podcast pipeline
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcloud-tts.json
+          PAGES_BASE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
+          LOG_LEVEL: INFO
+        run: python -m src.pipeline
+
+      # ── Publish Episode ────────────────────────────
+      - name: Commit and push episode
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add site/episodes/ site/feed.xml
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "Add episode $(date -u +%Y-%m-%d)"
+          for i in 1 2 3; do
+            git push && break
+            echo "Push attempt $i failed, retrying in 30s..."
+            sleep 30
+          done
+
+      # ── Update Snapshots ───────────────────────────
+      - name: Update snapshot branch
+        run: |
+          # Check if snapshots directory has files to commit
+          if [ ! -d "snapshots" ] || [ -z "$(ls -A snapshots/ 2>/dev/null)" ]; then
+            echo "No snapshot files to update"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Save snapshot files
+          cp -r snapshots/ /tmp/snapshots-staging/
+
+          # Switch to orphan branch (create if needed)
+          git fetch origin snapshots 2>/dev/null || true
+          if git show-ref --verify --quiet refs/remotes/origin/snapshots; then
+            git checkout origin/snapshots -- .
+            git checkout -B snapshots
+          else
+            git checkout --orphan snapshots
+            git rm -rf . 2>/dev/null || true
+          fi
+
+          # Copy snapshot files and commit
+          mkdir -p snapshots/
+          cp -r /tmp/snapshots-staging/* snapshots/
+          git add snapshots/
+          git diff --cached --quiet && echo "No snapshot changes" && exit 0
+          git commit -m "Update snapshots $(date -u +%Y-%m-%d)"
+          git push origin snapshots
+
+          # Return to main branch
+          git checkout main
+
+      # ── Cleanup ────────────────────────────────────
+      - name: Clean up credentials
+        if: always()
+        run: rm -f /tmp/gcloud-tts.json

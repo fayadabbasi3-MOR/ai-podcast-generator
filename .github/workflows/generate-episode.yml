@@ -88,7 +88,7 @@ jobs:
           # Copy snapshot files and commit
           mkdir -p snapshots/
           cp -r /tmp/snapshots-staging/* snapshots/
-          git add snapshots/
+          git add -f snapshots/
           git diff --cached --quiet && echo "No snapshot changes" && exit 0
           git commit -m "Update snapshots $(date -u +%Y-%m-%d)"
           git push origin snapshots

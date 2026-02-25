@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+     xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
+     xmlns:content="http://purl.org/rss/1.0/modules/content/"
+     xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>AI Industry Weekly</title>
+    <link>{PAGES_BASE_URL}</link>
+    <description>Weekly AI news from Anthropic, OpenAI, and Google — auto-generated podcast.</description>
+    <language>en-us</language>
+    <atom:link href="{PAGES_BASE_URL}/feed.xml" rel="self" type="application/rss+xml"/>
+
+    <!-- iTunes / Podcast metadata -->
+    <itunes:author>{PODCAST_AUTHOR}</itunes:author>
+    <itunes:email>{PODCAST_EMAIL}</itunes:email>
+    <itunes:summary>Weekly AI news from Anthropic, OpenAI, and Google — auto-generated podcast.</itunes:summary>
+    <itunes:category text="Technology"/>
+    <itunes:explicit>false</itunes:explicit>
+    <itunes:image href="{PAGES_BASE_URL}/cover.jpg"/>
+    <itunes:owner>
+      <itunes:name>{PODCAST_AUTHOR}</itunes:name>
+      <itunes:email>{PODCAST_EMAIL}</itunes:email>
+    </itunes:owner>
+    <itunes:type>episodic</itunes:type>
+
+    <!-- Episodes inserted here by publish.py -->
+  </channel>
+</rss>

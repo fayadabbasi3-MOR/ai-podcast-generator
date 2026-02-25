@@ -91,7 +91,7 @@ jobs:
           git add -f snapshots/
           git diff --cached --quiet && echo "No snapshot changes" && exit 0
           git commit -m "Update snapshots $(date -u +%Y-%m-%d)"
-          git push origin snapshots
+          git push --force origin snapshots
 
           # Return to main branch
           git checkout main

@@ -117,6 +117,11 @@ def _call_claude(
                 system=system_prompt,
                 messages=messages,
             )
+            if response.stop_reason == "max_tokens":
+                logger.warning(
+                    "Claude response truncated at %d tokens — increase SUMMARIZE_MAX_TOKENS",
+                    SUMMARIZE_MAX_TOKENS,
+                )
             return response.content[0].text
         except anthropic.APIStatusError as e:
             if e.status_code in RETRYABLE_STATUS_CODES and attempt < len(API_RETRY_DELAYS) - 1:

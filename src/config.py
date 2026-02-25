@@ -153,7 +153,7 @@ SOURCES: list[dict] = [
 
 # ── Claude API ─────────────────────────────────────────
 CLAUDE_MODEL = "claude-sonnet-4-6"
-SUMMARIZE_MAX_TOKENS = 4096
+SUMMARIZE_MAX_TOKENS = 16384
 SUMMARIZE_TEMPERATURE = 0.3
 SCRIPTGEN_MAX_TOKENS = 8192
 SCRIPTGEN_TEMPERATURE = 0.7

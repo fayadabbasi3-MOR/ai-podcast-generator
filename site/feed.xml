@@ -1,0 +1,33 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<rss xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:atom="http://www.w3.org/2005/Atom" version="2.0">
+  <channel>
+    <title>AI Industry Weekly</title>
+    <link>https://fayadabbasi3-MOR.github.io/ai-podcast-generator</link>
+    <description>Weekly AI news from Anthropic, OpenAI, and Google — auto-generated podcast.</description>
+    <language>en-us</language>
+    <atom:link href="https://fayadabbasi3-MOR.github.io/ai-podcast-generator/feed.xml" rel="self" type="application/rss+xml"/>
+    <!-- iTunes / Podcast metadata -->
+    <itunes:author/>
+    <itunes:email/>
+    <itunes:summary>Weekly AI news from Anthropic, OpenAI, and Google — auto-generated podcast.</itunes:summary>
+    <itunes:category text="Technology"/>
+    <itunes:explicit>false</itunes:explicit>
+    <itunes:image href="https://fayadabbasi3-MOR.github.io/ai-podcast-generator/cover.jpg"/>
+    <itunes:owner>
+      <itunes:name/>
+      <itunes:email/>
+    </itunes:owner>
+    <itunes:type>episodic</itunes:type>
+    <!-- Episodes inserted here by publish.py -->
+    <item>
+      <title>AI Industry Weekly — February 25, 2026</title>
+      <description>AI Industry Weekly episode for the week ending 2026-02-25.</description>
+      <enclosure url="https://fayadabbasi3-MOR.github.io/ai-podcast-generator/episodes/episode_2026-02-25.mp3" length="8660397" type="audio/mpeg"/>
+      <guid isPermaLink="false">episode_2026-02-25</guid>
+      <pubDate>Wed, 25 Feb 2026 17:15:33 GMT</pubDate>
+      <itunes:duration>00:09:01</itunes:duration>
+      <itunes:summary>AI Industry Weekly episode for the week ending 2026-02-25.</itunes:summary>
+      <itunes:episodeType>full</itunes:episodeType>
+    </item>
+  </channel>
+</rss>

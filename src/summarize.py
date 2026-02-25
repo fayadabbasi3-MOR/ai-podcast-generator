@@ -134,15 +134,32 @@ def _call_claude(
 def _try_parse_json(text: str) -> dict | None:
     """Attempt to parse text as JSON, stripping markdown fences if present."""
     text = text.strip()
-    if text.startswith("```"):
-        # Strip ```json ... ``` fences
-        lines = text.split("\n")
-        lines = [l for l in lines if not l.strip().startswith("```")]
-        text = "\n".join(lines)
+
+    # 1. Try raw parse first
     try:
         return json.loads(text)
     except json.JSONDecodeError:
-        return None
+        pass
+
+    # 2. Extract content between ```json ... ``` fences
+    import re
+    fence_match = re.search(r"```(?:json)?\s*\n(.*?)```", text, re.DOTALL)
+    if fence_match:
+        try:
+            return json.loads(fence_match.group(1).strip())
+        except json.JSONDecodeError:
+            pass
+
+    # 3. Find the outermost { ... } and try parsing that
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end > start:
+        try:
+            return json.loads(text[start:end + 1])
+        except json.JSONDecodeError:
+            pass
+
+    return None
 
 
 def _validate_summarize_output(data: dict) -> bool:

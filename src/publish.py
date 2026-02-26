@@ -108,9 +108,6 @@ def update_feed(feed_path: Path, new_item: etree._Element) -> None:
     root = tree.getroot()
     channel = root.find("channel")
 
-    # Sync channel metadata in case config changed since feed was created
-    _sync_channel_metadata(channel)
-
     # Find insertion point: after last non-item child of channel
     insert_idx = 0
     for i, child in enumerate(channel):
@@ -142,30 +139,3 @@ def create_initial_feed(
 
     output_path.write_text(content)
     logger.info("Created initial feed at %s", output_path)
-
-
-def _sync_channel_metadata(channel: etree._Element) -> None:
-    """Update channel-level metadata fields to match current config values."""
-    itunes = f"{{{ITUNES_NS}}}"
-
-    field_map = {
-        f"{itunes}author": PODCAST_AUTHOR,
-        f"{itunes}email": PODCAST_EMAIL,
-    }
-    for tag, value in field_map.items():
-        el = channel.find(tag)
-        if el is not None:
-            el.text = value
-        else:
-            el = etree.SubElement(channel, tag)
-            el.text = value
-
-    # Update itunes:owner children
-    owner = channel.find(f"{itunes}owner")
-    if owner is not None:
-        name_el = owner.find(f"{itunes}name")
-        if name_el is not None:
-            name_el.text = PODCAST_AUTHOR
-        email_el = owner.find(f"{itunes}email")
-        if email_el is not None:
-            email_el.text = PODCAST_EMAIL

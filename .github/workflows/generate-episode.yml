@@ -42,7 +42,7 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcloud-tts.json
-          PAGES_BASE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/site
+          PAGES_BASE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
           LOG_LEVEL: INFO
         run: python -m src.pipeline
 
@@ -51,7 +51,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -f site/episodes/ site/feed.xml
+          git add site/episodes/ site/feed.xml
           git diff --cached --quiet && echo "No changes to commit" && exit 0
           git commit -m "Add episode $(date -u +%Y-%m-%d)"
           for i in 1 2 3; do

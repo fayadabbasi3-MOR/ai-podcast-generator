@@ -200,3 +200,85 @@ class TestCreateInitialFeed:
         )
 
         assert feed_path.exists()
+
+
+# ── Metadata sync ─────────────────────────────────────
+
+
+class TestMetadataSync:
+    def test_update_feed_syncs_author_and_email(self, tmp_path):
+        """update_feed overwrites channel metadata even if feed was created with empty values."""
+        # Create feed with empty author/email (simulates the original bug)
+        feed_path = tmp_path / "feed.xml"
+        create_initial_feed(
+            TEMPLATE_PATH,
+            feed_path,
+            {"PAGES_BASE_URL": "https://test.io", "PODCAST_AUTHOR": "", "PODCAST_EMAIL": ""},
+        )
+
+        # Verify they're empty
+        tree = etree.parse(str(feed_path))
+        channel = tree.find(".//channel")
+        assert channel.findtext(f"{{{ITUNES_NS}}}author") == ""
+
+        # Now call update_feed with config values set
+        item = create_episode_item(SAMPLE_METADATA)
+        from unittest.mock import patch
+        with patch("src.publish.PODCAST_AUTHOR", "Fixed Author"), \
+             patch("src.publish.PODCAST_EMAIL", "fixed@example.com"):
+            update_feed(feed_path, item)
+
+        # Verify metadata was synced
+        tree = etree.parse(str(feed_path))
+        channel = tree.find(".//channel")
+        assert channel.findtext(f"{{{ITUNES_NS}}}author") == "Fixed Author"
+        assert channel.findtext(f"{{{ITUNES_NS}}}email") == "fixed@example.com"
+
+        owner = channel.find(f"{{{ITUNES_NS}}}owner")
+        assert owner.findtext(f"{{{ITUNES_NS}}}name") == "Fixed Author"
+        assert owner.findtext(f"{{{ITUNES_NS}}}email") == "fixed@example.com"
+
+
+# ── Cross-file consistency ────────────────────────────
+
+
+class TestWorkflowConsistency:
+    def test_gitignore_does_not_block_workflow_git_add(self):
+        """Every file the workflow git-adds must use -f if matched by .gitignore."""
+        import re
+        from pathlib import Path
+        from fnmatch import fnmatch
+
+        root = Path(__file__).resolve().parent.parent
+        gitignore_path = root / ".gitignore"
+        workflow_path = root / ".github" / "workflows" / "generate-episode.yml"
+
+        if not gitignore_path.exists() or not workflow_path.exists():
+            pytest.skip("Missing .gitignore or workflow file")
+
+        # Parse gitignore patterns
+        patterns = []
+        for line in gitignore_path.read_text().splitlines():
+            line = line.strip()
+            if line and not line.startswith("#"):
+                patterns.append(line.rstrip("/"))
+
+        # Extract all 'git add' commands from workflow
+        workflow = workflow_path.read_text()
+        git_add_lines = re.findall(r"git add\s+(.*)", workflow)
+
+        for line in git_add_lines:
+            has_force = "-f" in line
+            # Extract paths (skip flags)
+            paths = [p for p in line.split() if not p.startswith("-")]
+
+            for path in paths:
+                for pattern in patterns:
+                    # Check if any component of the path matches a gitignore pattern
+                    path_parts = path.rstrip("/").split("/")
+                    for part in path_parts:
+                        if fnmatch(part, pattern) or fnmatch(part + "/", pattern + "/"):
+                            assert has_force, (
+                                f"Workflow 'git add {path}' matches .gitignore pattern "
+                                f"'{pattern}' but does not use -f flag"
+                            )

@@ -1,0 +1,32 @@
+name: Notify New Episode
+
+on:
+  workflow_run:
+    workflows: ["Generate Weekly Podcast Episode"]
+    types: [completed]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install lxml
+
+      - name: Send email notification
+        env:
+          GMAIL_SENDER: ${{ secrets.GMAIL_SENDER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          NOTIFY_EMAIL: ${{ secrets.NOTIFY_EMAIL }}
+        run: python scripts/notify_email.py

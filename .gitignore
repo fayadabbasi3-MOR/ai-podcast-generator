@@ -5,3 +5,4 @@ __pycache__/
 /tmp/
 gcloud-tts-key.json
 snapshots/
+prompts/context/*_sample.md

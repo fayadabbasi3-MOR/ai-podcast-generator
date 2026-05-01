@@ -187,3 +187,13 @@ PODCAST_AUTHOR = "FAYAD ABBASI"
 PODCAST_EMAIL = "fayadabbasi3@gmail.com"
 PODCAST_LANGUAGE = "en-us"
 PODCAST_CATEGORY = "Technology"
+
+# ── Substack PM Weekly ─────────────────────────────────
+SUBSTACK_GMAIL_LABEL = "Substack/PM"
+SUBSTACK_LOOKBACK_DAYS = 7
+SUBSTACK_PER_SEGMENT_TARGET_WORDS = 750
+SUBSTACK_FEED_DIR = "site/substack"
+SUBSTACK_PODCAST_TITLE = "Substack PM Weekly"
+STATE_DIR = "state"
+SUBSTACK_SEEN_FILE = "state/substack_seen.json"
+ACTION_ITEMS_COUNT = 3

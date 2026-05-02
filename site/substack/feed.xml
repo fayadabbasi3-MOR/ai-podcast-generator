@@ -1,0 +1,33 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<rss xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:atom="http://www.w3.org/2005/Atom" version="2.0">
+  <channel>
+    <title>Substack PM Weekly</title>
+    <link>https://fayad-abbasi.github.io/ai-podcast-generator/site</link>
+    <description>Weekly digest of Fayad's paid Substack PM newsletters — auto-generated.</description>
+    <language>en-us</language>
+    <atom:link href="https://fayad-abbasi.github.io/ai-podcast-generator/site/substack/feed.xml" rel="self" type="application/rss+xml"/>
+    <!-- iTunes / Podcast metadata -->
+    <itunes:author>FAYAD ABBASI</itunes:author>
+    <itunes:email>fayadabbasi3@gmail.com</itunes:email>
+    <itunes:summary>Weekly digest of Fayad's paid Substack PM newsletters — auto-generated.</itunes:summary>
+    <itunes:category text="Technology"/>
+    <itunes:explicit>false</itunes:explicit>
+    <itunes:image href="https://fayad-abbasi.github.io/ai-podcast-generator/site/cover.jpg"/>
+    <itunes:owner>
+      <itunes:name>FAYAD ABBASI</itunes:name>
+      <itunes:email>fayadabbasi3@gmail.com</itunes:email>
+    </itunes:owner>
+    <itunes:type>episodic</itunes:type>
+    <!-- Episodes inserted here by publish.py -->
+    <item>
+      <title>Substack PM Weekly — May 2, 2026</title>
+      <description>Substack PM Weekly episode for the week ending 2026-05-02.</description>
+      <enclosure url="https://fayad-abbasi.github.io/ai-podcast-generator/site/substack/episodes/episode_2026-05-02.mp3" length="32923053" type="audio/mpeg"/>
+      <guid isPermaLink="false">substack_2026-05-02</guid>
+      <pubDate>Sat, 02 May 2026 02:27:25 GMT</pubDate>
+      <itunes:duration>00:34:17</itunes:duration>
+      <itunes:summary>Substack PM Weekly episode for the week ending 2026-05-02.</itunes:summary>
+      <itunes:episodeType>full</itunes:episodeType>
+    </item>
+  </channel>
+</rss>

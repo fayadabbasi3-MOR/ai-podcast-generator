@@ -108,6 +108,21 @@ class TestSubstackDryRun:
         assert result["status"] == "no_content"
         assert result["items_count"] == 0
 
+    @patch("src.pipeline.send_empty_week_email")
+    @patch("src.pipeline._try_smtp_creds")
+    @patch("src.pipeline.SubstackPMSource")
+    def test_zero_items_sends_empty_week_email(self, mock_src_cls, mock_creds, mock_empty_email):
+        src_instance = MagicMock()
+        src_instance.fetch.return_value = []
+        mock_src_cls.return_value = src_instance
+        mock_creds.return_value = {"sender": "x", "password": "y", "recipient": "z"}
+
+        run_pipeline(source="substack_pm", dry_run=True)
+
+        mock_empty_email.assert_called_once()
+        kwargs = mock_empty_email.call_args.kwargs
+        assert kwargs["podcast_name"] == "Substack PM Weekly"
+
 
 class TestSubstackPublish:
     @patch("src.pipeline.SubstackPMSource")
@@ -155,3 +170,48 @@ class TestSubstackPublish:
         kwargs = mock_update_feed.call_args.kwargs
         assert "channel_config" in kwargs
         assert kwargs["channel_config"]["PODCAST_TITLE"] == "Substack PM Weekly"
+
+    @patch("src.pipeline.send_episode_email")
+    @patch("src.pipeline._try_smtp_creds")
+    @patch("src.pipeline.SubstackPMSource")
+    @patch("src.pipeline.summarize_one")
+    @patch("src.pipeline.aggregate_summarize")
+    @patch("src.pipeline.load_memory_slices")
+    @patch("src.pipeline.generate_action_items")
+    @patch("src.pipeline.generate_substack_script")
+    @patch("src.pipeline.synthesize_script")
+    @patch("src.pipeline.stitch_audio")
+    @patch("src.pipeline.update_feed")
+    @patch("src.pipeline.get_episode_metadata")
+    def test_full_run_sends_email_with_action_items(
+        self, mock_get_meta, mock_update_feed, mock_stitch, mock_synth, mock_script,
+        mock_actions, mock_load_mem, mock_aggregate, mock_summarize_one,
+        mock_src_cls, mock_creds, mock_send_email,
+    ):
+        urls = ["https://l.com/p/1"]
+        src_instance = MagicMock()
+        src_instance.fetch.return_value = [_content_item("m1", "Post", urls[0])]
+        mock_src_cls.return_value = src_instance
+
+        mock_summarize_one.return_value = _newsletter_summary(urls[0])
+        mock_aggregate.return_value = _aggregate()
+        mock_load_mem.return_value = {"role": "PM", "projects": "Port"}
+        mock_actions.return_value = _action_items(urls)
+        mock_script.return_value = _script_segments()
+        mock_synth.return_value = [Path("/tmp/seg1.mp3")]
+        mock_get_meta.return_value = {
+            "title": "Substack PM Weekly — May 8, 2026",
+            "url": "https://x.com/substack/episodes/episode_2026-05-08.mp3",
+            "duration": "00:42:00", "guid": "substack_2026-05-08", "size_bytes": 1024,
+            "pub_date": "Fri, 08 May 2026 06:00:00 GMT", "description": "",
+            "file_name": "episode_2026-05-08.mp3",
+        }
+        mock_creds.return_value = {"sender": "s", "password": "p", "recipient": "r"}
+
+        run_pipeline(source="substack_pm", dry_run=False)
+
+        mock_send_email.assert_called_once()
+        kwargs = mock_send_email.call_args.kwargs
+        assert kwargs["podcast_name"] == "Substack PM Weekly"
+        assert kwargs["action_items"] == _action_items(urls)
+        assert kwargs["aggregate"] is not None

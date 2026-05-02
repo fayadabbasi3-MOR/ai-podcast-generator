@@ -27,6 +27,13 @@ from src.publish import (
     update_feed,
 )
 from src.action_items import generate_action_items, load_memory_slices
+from src.email_publish import (
+    sections_from_ai_industry_themes,
+    sections_from_substack_summaries,
+    send_empty_week_email,
+    send_episode_email,
+    smtp_creds_from_env,
+)
 from src.scriptgen import generate_script, generate_substack_script
 from src.sources.substack_pm import SubstackPMSource
 from src.summarize import aggregate_summarize, summarize, summarize_one
@@ -35,6 +42,15 @@ from src.tts import synthesize_script
 logger = logging.getLogger(__name__)
 
 VALID_SOURCES = ("ai_industry", "substack_pm")
+
+
+def _try_smtp_creds():
+    """Return SmtpCreds dict if env is set, else None (with warning)."""
+    try:
+        return smtp_creds_from_env()
+    except EnvironmentError as e:
+        logger.warning("Skipping email send: %s", e)
+        return None
 
 
 def run_pipeline(source: str = "ai_industry", dry_run: bool = False) -> dict:
@@ -133,6 +149,20 @@ def _run_ai_industry(dry_run: bool = False) -> dict:
     feed_path = SITE_DIR / "feed.xml"
     update_feed(feed_path, item)
 
+    # ── Stage 7: Email companion ──────────────────────
+    creds = _try_smtp_creds()
+    if creds is not None:
+        logger.info("Stage 7: Sending AI Industry email digest")
+        send_episode_email(
+            podcast_name="AI Industry Weekly",
+            week_ending=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            sections=sections_from_ai_industry_themes(themes),
+            aggregate=None,
+            action_items=None,
+            episode_url=metadata["url"],
+            creds=creds,
+        )
+
     result["status"] = "published"
     result["episode_title"] = metadata["title"]
     result["mp3_path"] = str(episode_path)
@@ -177,7 +207,14 @@ def _run_substack_pm(dry_run: bool = False) -> dict:
     logger.info("Ingested %d newsletters", len(items))
 
     if len(items) == 0:
-        logger.warning("No newsletters this week — would send 'no newsletters' email (M4)")
+        logger.warning("No newsletters this week")
+        creds = _try_smtp_creds()
+        if creds is not None:
+            send_empty_week_email(
+                podcast_name=SUBSTACK_PODCAST_TITLE,
+                week_ending=week_ending,
+                creds=creds,
+            )
         result["status"] = "no_content"
         return result
 
@@ -243,11 +280,22 @@ def _run_substack_pm(dry_run: bool = False) -> dict:
     }
     update_feed(feed_path, rss_item, channel_config=channel_config)
 
-    # ── Stage 9: Persist seen IDs ─────────────────────
-    src.mark_processed()
+    # ── Stage 9: Email companion ──────────────────────
+    creds = _try_smtp_creds()
+    if creds is not None:
+        logger.info("Stage 9: Sending Substack email digest")
+        send_episode_email(
+            podcast_name=SUBSTACK_PODCAST_TITLE,
+            week_ending=week_ending,
+            sections=sections_from_substack_summaries(per_item),
+            aggregate=aggregate,
+            action_items=action_items,
+            episode_url=metadata["url"],
+            creds=creds,
+        )
 
-    # ── Stage 10: Email companion (M4) ────────────────
-    logger.info("Stage 10: Email companion send pending M4 implementation")
+    # ── Stage 10: Persist seen IDs ────────────────────
+    src.mark_processed()
 
     result["status"] = "published"
     result["episode_title"] = metadata["title"]

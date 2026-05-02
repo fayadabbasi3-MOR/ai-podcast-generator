@@ -159,6 +159,50 @@ class TestRunPipeline:
         assert result["themes_count"] == 1
         mock_feed.assert_called_once()
 
+    @patch("src.pipeline.send_episode_email")
+    @patch("src.pipeline._try_smtp_creds")
+    @patch("src.pipeline.update_feed")
+    @patch("src.pipeline.create_episode_item")
+    @patch("src.pipeline.get_episode_metadata")
+    @patch("src.pipeline.stitch_audio")
+    @patch("src.pipeline.synthesize_script")
+    @patch("src.pipeline.generate_script")
+    @patch("src.pipeline.summarize")
+    @patch("src.pipeline.ingest_all")
+    def test_ai_industry_sends_email_without_action_items(
+        self, mock_ingest, mock_summarize, mock_script, mock_tts, mock_stitch,
+        mock_meta, mock_item, mock_feed, mock_creds, mock_send_email, tmp_path,
+    ):
+        """AI Industry pipeline sends an email digest with action_items=None."""
+        mock_ingest.return_value = SAMPLE_CONTENT
+        mock_summarize.return_value = SAMPLE_SUMMARY
+        mock_script.return_value = SAMPLE_SEGMENTS
+        mock_tts.return_value = [tmp_path / "seg_000.mp3"]
+
+        def fake_stitch(paths, output_path, **kwargs):
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_bytes(b"\x00" * 500_000)
+            return output_path
+        mock_stitch.side_effect = fake_stitch
+        mock_meta.return_value = {
+            "title": "AI Industry Weekly — March 5, 2025",
+            "file_name": "episode_2025-03-05.mp3",
+            "url": "https://example.github.io/pod/episodes/episode_2025-03-05.mp3",
+            "size_bytes": 500_000, "duration": "00:08:32",
+            "pub_date": "Wed, 05 Mar 2025 20:00:00 GMT",
+            "description": "Weekly episode.", "guid": "episode_2025-03-05",
+        }
+        mock_item.return_value = MagicMock()
+        mock_creds.return_value = {"sender": "s", "password": "p", "recipient": "r"}
+
+        run_pipeline()
+
+        mock_send_email.assert_called_once()
+        kwargs = mock_send_email.call_args.kwargs
+        assert kwargs["podcast_name"] == "AI Industry Weekly"
+        assert kwargs["action_items"] is None
+        assert kwargs["aggregate"] is None
+
     @patch("src.pipeline.ingest_all")
     def test_errors_propagated(self, mock_ingest):
         """Ingest errors are included in the result."""

@@ -86,6 +86,45 @@ def generate_script(themes: dict) -> list[dict]:
     return parse_script(raw_text)
 
 
+def generate_substack_script(
+    per_item: list[dict],
+    aggregate: dict,
+    action_items: list[dict],
+    week_ending: str | None = None,
+    prompt_file: str = "scriptgen_substack.txt",
+) -> list[dict]:
+    """Substack-flavored two-speaker script. Same retry pattern as
+    generate_script. INTERVIEWER must speak first."""
+    system_prompt = (PROMPTS_DIR / prompt_file).read_text()
+    user_message = json.dumps({
+        "week_ending": week_ending or "",
+        "newsletter_count": len(per_item),
+        "per_item_summaries": per_item,
+        "aggregate": aggregate,
+        "action_items": action_items,
+    }, ensure_ascii=False)
+
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    messages = [{"role": "user", "content": user_message}]
+
+    raw_text = _call_claude(client, system_prompt, messages)
+    try:
+        segments = parse_script(raw_text)
+    except ValueError:
+        logger.warning("Substack script parse failed — retrying")
+        messages.append({"role": "assistant", "content": raw_text})
+        messages.append({
+            "role": "user",
+            "content": "Please format every line with [INTERVIEWER]: or [EXPERT]: tags. INTERVIEWER speaks first.",
+        })
+        raw_text = _call_claude(client, system_prompt, messages)
+        segments = parse_script(raw_text)
+
+    if segments[0]["speaker"] != "interviewer":
+        raise ValueError("Substack script must start with INTERVIEWER")
+    return segments
+
+
 def _call_claude(
     client: anthropic.Anthropic,
     system_prompt: str,

@@ -1,0 +1,82 @@
+name: Substack PM Weekly
+
+on:
+  schedule:
+    - cron: '0 6 * * 5'   # 06:00 UTC Friday = 02:00 ET Friday
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      # ── Setup ──────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      # ── Credentials ────────────────────────────────
+      - name: Decode Google TTS credentials
+        run: |
+          echo "${{ secrets.GOOGLE_TTS_CREDENTIALS }}" | base64 -d > /tmp/gcloud-tts.json
+
+      # ── Run Pipeline ───────────────────────────────
+      - name: Run substack pipeline
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcloud-tts.json
+          PAGES_BASE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/site
+          # Gmail OAuth — for ingesting newsletters via Gmail API
+          GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ secrets.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_OAUTH_REFRESH_TOKEN }}
+          # Gmail SMTP — for sending the digest email
+          GMAIL_SENDER: ${{ secrets.GMAIL_SENDER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          NOTIFY_EMAIL: ${{ secrets.NOTIFY_EMAIL }}
+          LOG_LEVEL: INFO
+        run: python -m src.pipeline --source substack_pm
+
+      # ── Publish Episode ────────────────────────────
+      - name: Commit and push episode + state
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f site/substack/episodes/ site/substack/feed.xml state/substack_seen.json
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "Add substack episode $(date -u +%Y-%m-%d)"
+          for i in 1 2 3; do
+            git push && break
+            echo "Push attempt $i failed, retrying in 30s..."
+            sleep 30
+          done
+
+      # ── Cleanup ────────────────────────────────────
+      - name: Clean up credentials
+        if: always()
+        run: rm -f /tmp/gcloud-tts.json
+
+      # ── Failure alert ──────────────────────────────
+      - name: Slack alert on failure
+        if: failure() && env.SLACK_WEBHOOK_INBOX != ''
+        env:
+          SLACK_WEBHOOK_INBOX: ${{ secrets.SLACK_WEBHOOK_INBOX }}
+        run: |
+          curl -s -X POST -H 'Content-Type: application/json' \
+            --data "{\"text\":\":rotating_light: Workflow *${{ github.workflow }}* failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}" \
+            "$SLACK_WEBHOOK_INBOX"

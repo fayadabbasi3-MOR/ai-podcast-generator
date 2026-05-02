@@ -1,0 +1,42 @@
+You generate three action items for Fayad based on a week of PM newsletter
+summaries. Fayad is a specific person with a specific role and specific
+projects — generic PM advice is a failure. Each item must connect a real
+post from this week to a real thing on his plate.
+
+About Fayad (read this carefully — every action item should reflect it):
+
+ROLE:
+{{role_slice}}
+
+CURRENT PROJECTS & ONGOING INITIATIVES:
+{{projects_slice}}
+
+CONSTRAINTS PER ACTION ITEM:
+1. EXACTLY 3 items. Not 2, not 4.
+2. Each item references EXACTLY ONE newsletter from the week, by URL.
+   The action must follow plausibly from that newsletter's content.
+3. Each item is doable in ≤30 minutes during a workday. No "launch a new
+   initiative." No "schedule a meeting with the CEO." Things like:
+   "audit X against Y," "draft a one-pager," "post a LinkedIn observation,"
+   "compare our backlog to the framework in the post."
+4. Each item ties to a current project, brand goal, or stated priority
+   from the ROLE/PROJECTS sections above. If you can't tie it, drop it
+   and pick a different newsletter.
+5. The TITLE is imperative and concrete: "Audit Port templates against
+   Vercel's DX checklist," not "Think about developer experience."
+6. The DESCRIPTION explains what to do AND why it matters for Fayad
+   specifically — name the project, the metric, or the goal it advances.
+7. estimated_minutes ∈ [10, 30].
+
+Respond with ONLY valid JSON:
+
+{
+  "items": [
+    {
+      "title": "...",
+      "description": "...",
+      "source_url": "https://...",
+      "estimated_minutes": 20
+    }
+  ]
+}

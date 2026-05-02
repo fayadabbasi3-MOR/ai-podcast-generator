@@ -177,18 +177,23 @@ class TestCreateInitialFeed:
             feed_path,
             {
                 "PAGES_BASE_URL": "https://mysite.github.io/podcast",
+                "PODCAST_TITLE": "Test Show",
+                "PODCAST_DESCRIPTION": "A test show.",
                 "PODCAST_AUTHOR": "Jane Doe",
                 "PODCAST_EMAIL": "jane@example.com",
+                "FEED_SELF_URL": "https://mysite.github.io/podcast/feed.xml",
             },
         )
 
         content = feed_path.read_text()
         assert "https://mysite.github.io/podcast" in content
+        assert "Test Show" in content
         assert "Jane Doe" in content
         assert "jane@example.com" in content
-        assert "{PAGES_BASE_URL}" not in content
-        assert "{PODCAST_AUTHOR}" not in content
-        assert "{PODCAST_EMAIL}" not in content
+        for placeholder in ("{PAGES_BASE_URL}", "{PODCAST_TITLE}",
+                            "{PODCAST_DESCRIPTION}", "{PODCAST_AUTHOR}",
+                            "{PODCAST_EMAIL}", "{FEED_SELF_URL}"):
+            assert placeholder not in content
 
     def test_creates_parent_dirs(self, tmp_path):
         """Parent directories are created if they don't exist."""
@@ -239,6 +244,57 @@ class TestMetadataSync:
         assert owner.findtext(f"{{{ITUNES_NS}}}email") == "fixed@example.com"
 
 
+# ── Substack feed parameterization ───────────────────
+
+
+class TestSubstackFeedParameterization:
+    def test_get_episode_metadata_uses_custom_title_and_subpath(self, tmp_path):
+        mp3_path = tmp_path / "episode_2026-05-08.mp3"
+        mp3_path.write_bytes(b"fake mp3" * 100)
+        with pytest.MonkeyPatch.context() as m:
+            m.setattr("src.publish.get_mp3_duration_seconds", lambda _: 1234)
+            metadata = get_episode_metadata(
+                mp3_path,
+                "https://example.com/podcasts",
+                podcast_title="Substack PM Weekly",
+                episode_url_subpath="substack/episodes",
+                guid_prefix="substack",
+            )
+        assert metadata["title"].startswith("Substack PM Weekly — ")
+        assert "substack/episodes/" in metadata["url"]
+        assert metadata["url"].startswith("https://example.com/podcasts/substack/episodes/")
+        assert metadata["guid"].startswith("substack_")
+        assert "Substack PM Weekly episode" in metadata["description"]
+
+    def test_update_feed_writes_substack_channel_config(self, tmp_path):
+        feed_path = tmp_path / "substack" / "feed.xml"
+        sub_config = {
+            "PAGES_BASE_URL": "https://example.com/podcasts",
+            "PODCAST_TITLE": "Substack PM Weekly",
+            "PODCAST_DESCRIPTION": "Weekly substack PM digest.",
+            "PODCAST_AUTHOR": "Fayad",
+            "PODCAST_EMAIL": "f@example.com",
+            "FEED_SELF_URL": "https://example.com/podcasts/substack/feed.xml",
+        }
+        item = create_episode_item(SAMPLE_METADATA)
+        update_feed(feed_path, item, channel_config=sub_config)
+
+        tree = etree.parse(str(feed_path))
+        channel = tree.find(".//channel")
+        assert channel.findtext("title") == "Substack PM Weekly"
+        assert channel.findtext("description") == "Weekly substack PM digest."
+
+    def test_update_feed_default_config_uses_ai_industry(self, tmp_path):
+        """No channel_config supplied → falls back to AI Industry defaults."""
+        feed_path = tmp_path / "feed.xml"
+        item = create_episode_item(SAMPLE_METADATA)
+        update_feed(feed_path, item)
+
+        tree = etree.parse(str(feed_path))
+        channel = tree.find(".//channel")
+        assert channel.findtext("title") == "AI Industry Weekly"
+
+
 # ── Cross-file consistency ────────────────────────────
 
 
@@ -251,7 +307,7 @@ class TestWorkflowConsistency:
 
         root = Path(__file__).resolve().parent.parent
         gitignore_path = root / ".gitignore"
-        workflow_path = root / ".github" / "workflows" / "generate-episode.yml"
+        workflow_path = root / ".github" / "workflows" / "ai-industry-weekly.yml"
 
         if not gitignore_path.exists() or not workflow_path.exists():
             pytest.skip("Missing .gitignore or workflow file")

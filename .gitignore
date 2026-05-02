@@ -4,4 +4,6 @@ __pycache__/
 *.pyc
 /tmp/
 gcloud-tts-key.json
+client_secret.json
 snapshots/
+prompts/context/*_sample.md

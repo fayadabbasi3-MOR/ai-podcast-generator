@@ -1,6 +1,7 @@
 import json
 import logging
 import time
+from typing import TypedDict
 
 import anthropic
 
@@ -11,6 +12,23 @@ from src.config import (
     SUMMARIZE_MAX_TOKENS,
     SUMMARIZE_TEMPERATURE,
 )
+from src.sources import ContentItem
+
+
+class NewsletterSummary(TypedDict):
+    title: str
+    publication: str
+    author: str | None
+    url: str
+    one_liner: str
+    summary: str
+    key_takeaways: list[str]
+
+
+class AggregateSummary(TypedDict):
+    narrative: str
+    cross_cutting_themes: list[str]
+    notable_quotes: list[str]
 
 logger = logging.getLogger(__name__)
 
@@ -173,5 +191,102 @@ def _validate_summarize_output(data: dict) -> bool:
         return False
     themes = data.get("themes")
     if not isinstance(themes, list) or len(themes) == 0:
+        return False
+    return True
+
+
+# ── Substack: per-newsletter summary ──────────────────────────────────
+
+
+def summarize_one(item: ContentItem, prompt_file: str = "summarize_substack.txt") -> NewsletterSummary:
+    """Per-newsletter summary for the Substack pipeline.
+
+    item: ContentItem with body_text populated.
+    Returns a NewsletterSummary dict. Retry-once on bad JSON; raises on
+    persistent failure.
+    """
+    system_prompt = (PROMPTS_DIR / prompt_file).read_text()
+    user_message = json.dumps({
+        "title": item.get("title", ""),
+        "publication": item.get("source_meta", {}).get("publication", ""),
+        "author": item.get("author"),
+        "url": item.get("url", ""),
+        "body_text": item.get("body_text", ""),
+    }, ensure_ascii=False)
+
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    messages = [{"role": "user", "content": user_message}]
+
+    raw = _call_claude(client, system_prompt, messages)
+    parsed = _try_parse_json(raw)
+    if parsed and _validate_newsletter_summary(parsed):
+        return parsed
+
+    logger.warning("Invalid summarize_one output for %s — retrying", item.get("url"))
+    messages.append({"role": "assistant", "content": raw})
+    messages.append({"role": "user", "content": "Return ONLY valid JSON matching the specified shape."})
+    raw = _call_claude(client, system_prompt, messages)
+    parsed = _try_parse_json(raw)
+    if parsed and _validate_newsletter_summary(parsed):
+        return parsed
+
+    raise ValueError(f"summarize_one failed for {item.get('url')}: last response: {raw[:200]}")
+
+
+def _validate_newsletter_summary(data: dict) -> bool:
+    if not isinstance(data, dict):
+        return False
+    required = {"title", "publication", "url", "one_liner", "summary", "key_takeaways"}
+    if not required.issubset(data.keys()):
+        return False
+    if not isinstance(data["one_liner"], str) or len(data["one_liner"]) > 140:
+        return False
+    if not isinstance(data["key_takeaways"], list):
+        return False
+    return True
+
+
+# ── Substack: aggregate summary ───────────────────────────────────────
+
+
+def aggregate_summarize(
+    per_item: list[NewsletterSummary],
+    prompt_file: str = "aggregate_substack.txt",
+    week_ending: str | None = None,
+) -> AggregateSummary:
+    """Cross-cutting wrap-up across the week's newsletter summaries."""
+    system_prompt = (PROMPTS_DIR / prompt_file).read_text()
+    user_message = json.dumps({
+        "week_ending": week_ending or "",
+        "newsletter_summaries": per_item,
+    }, ensure_ascii=False)
+
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    messages = [{"role": "user", "content": user_message}]
+
+    raw = _call_claude(client, system_prompt, messages)
+    parsed = _try_parse_json(raw)
+    if parsed and _validate_aggregate_summary(parsed):
+        return parsed
+
+    logger.warning("Invalid aggregate_summarize output — retrying")
+    messages.append({"role": "assistant", "content": raw})
+    messages.append({"role": "user", "content": "Return ONLY valid JSON matching the specified shape."})
+    raw = _call_claude(client, system_prompt, messages)
+    parsed = _try_parse_json(raw)
+    if parsed and _validate_aggregate_summary(parsed):
+        return parsed
+
+    raise ValueError(f"aggregate_summarize failed: last response: {raw[:200]}")
+
+
+def _validate_aggregate_summary(data: dict) -> bool:
+    if not isinstance(data, dict):
+        return False
+    if not isinstance(data.get("narrative"), str) or len(data["narrative"]) < 100:
+        return False
+    if not isinstance(data.get("cross_cutting_themes"), list):
+        return False
+    if not isinstance(data.get("notable_quotes"), list):
         return False
     return True

@@ -4,16 +4,16 @@
      xmlns:content="http://purl.org/rss/1.0/modules/content/"
      xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>AI Industry Weekly</title>
+    <title>{PODCAST_TITLE}</title>
     <link>{PAGES_BASE_URL}</link>
-    <description>Weekly AI news from Anthropic, OpenAI, and Google — auto-generated podcast.</description>
+    <description>{PODCAST_DESCRIPTION}</description>
     <language>en-us</language>
-    <atom:link href="{PAGES_BASE_URL}/feed.xml" rel="self" type="application/rss+xml"/>
+    <atom:link href="{FEED_SELF_URL}" rel="self" type="application/rss+xml"/>
 
     <!-- iTunes / Podcast metadata -->
     <itunes:author>{PODCAST_AUTHOR}</itunes:author>
     <itunes:email>{PODCAST_EMAIL}</itunes:email>
-    <itunes:summary>Weekly AI news from Anthropic, OpenAI, and Google — auto-generated podcast.</itunes:summary>
+    <itunes:summary>{PODCAST_DESCRIPTION}</itunes:summary>
     <itunes:category text="Technology"/>
     <itunes:explicit>false</itunes:explicit>
     <itunes:image href="{PAGES_BASE_URL}/cover.jpg"/>

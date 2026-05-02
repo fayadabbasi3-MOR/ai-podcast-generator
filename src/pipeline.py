@@ -11,9 +11,14 @@ from src.config import (
     EPISODES_DIR,
     LOOKBACK_DAYS,
     PAGES_BASE_URL,
+    PODCAST_AUTHOR,
+    PODCAST_EMAIL,
+    ROOT_DIR,
     SITE_DIR,
     SOURCES,
+    SUBSTACK_FEED_DIR,
     SUBSTACK_LOOKBACK_DAYS,
+    SUBSTACK_PODCAST_TITLE,
 )
 from src.ingest import ingest_all
 from src.publish import (
@@ -21,8 +26,10 @@ from src.publish import (
     get_episode_metadata,
     update_feed,
 )
-from src.scriptgen import generate_script
-from src.summarize import summarize
+from src.action_items import generate_action_items, load_memory_slices
+from src.scriptgen import generate_script, generate_substack_script
+from src.sources.substack_pm import SubstackPMSource
+from src.summarize import aggregate_summarize, summarize, summarize_one
 from src.tts import synthesize_script
 
 logger = logging.getLogger(__name__)
@@ -136,18 +143,33 @@ def _run_ai_industry(dry_run: bool = False) -> dict:
 
 
 def _run_substack_pm(dry_run: bool = False) -> dict:
-    """Substack PM pipeline. Fetches newsletters via Gmail; full summarize/
-    scriptgen path lands in M3. For now, dry-run prints the fetched items
-    and exits cleanly so the wiring is verifiable end-to-end."""
-    from src.sources.substack_pm import SubstackPMSource
+    """Substack PM pipeline:
 
+    1. Fetch newsletters from Gmail (label:Substack/PM newer_than:7d, dedup against state).
+    2. Per-newsletter summary (Claude).
+    3. Aggregate summary (Claude).
+    4. Action items grounded in role.md/projects.md (Claude).
+    5. Two-speaker dialogue (Claude).
+    6. TTS + audio stitching.
+    7. Publish to site/substack/feed.xml + site/substack/episodes/.
+    8. Persist seen message IDs.
+    9. Email companion: M4 work — currently a TODO log line.
+    """
     result = {
         "status": "skipped",
         "source": "substack_pm",
         "items_count": 0,
+        "episode_title": None,
+        "mp3_path": None,
+        "segments_count": 0,
+        "duration": None,
         "errors": [],
     }
 
+    now = datetime.now(timezone.utc)
+    week_ending = now.strftime("%Y-%m-%d")
+
+    # ── Stage 1: Ingest ───────────────────────────────
     logger.info("Stage 1: Ingesting Substack newsletters via Gmail")
     src = SubstackPMSource()
     items = src.fetch(since_days=SUBSTACK_LOOKBACK_DAYS)
@@ -155,19 +177,83 @@ def _run_substack_pm(dry_run: bool = False) -> dict:
     logger.info("Ingested %d newsletters", len(items))
 
     if len(items) == 0:
-        logger.warning("No newsletters this week — would send 'no newsletters' email")
+        logger.warning("No newsletters this week — would send 'no newsletters' email (M4)")
+        result["status"] = "no_content"
         return result
+
+    # ── Stage 2: Per-newsletter summaries ─────────────
+    logger.info("Stage 2: Per-newsletter summaries")
+    per_item = [summarize_one(item) for item in items]
+
+    # ── Stage 3: Aggregate ────────────────────────────
+    logger.info("Stage 3: Aggregate summary")
+    aggregate = aggregate_summarize(per_item, week_ending=week_ending)
+
+    # ── Stage 4: Action items ─────────────────────────
+    logger.info("Stage 4: Action items (memory-injected)")
+    memory_slices = load_memory_slices()
+    action_items = generate_action_items(per_item, aggregate, memory_slices, week_ending=week_ending)
+
+    # ── Stage 5: Script ───────────────────────────────
+    logger.info("Stage 5: Generating substack dialogue")
+    segments = generate_substack_script(per_item, aggregate, action_items, week_ending=week_ending)
+    result["segments_count"] = len(segments)
 
     if dry_run:
         result["status"] = "dry_run"
-        for item in items:
-            print(f"[{item['source_meta'].get('publication','')}] {item['title']}")
-            print(f"  {item['url']}")
-            print(f"  {len(item['body_text'])} chars body")
+        for seg in segments:
+            print(f"[{seg['speaker'].upper()}]: {seg['text']}")
         return result
 
-    logger.error("Substack non-dry-run path not implemented yet (M3 work)")
-    result["status"] = "not_implemented"
+    # ── Stage 6: TTS ──────────────────────────────────
+    logger.info("Stage 6: Synthesizing audio via Google TTS")
+    segment_paths = synthesize_script(segments)
+
+    # ── Stage 7: Stitch ───────────────────────────────
+    logger.info("Stage 7: Stitching audio")
+    date_str = now.strftime("%Y-%m-%d")
+    episode_filename = f"episode_{date_str}.mp3"
+    substack_episodes_dir = ROOT_DIR / SUBSTACK_FEED_DIR / "episodes"
+    substack_episodes_dir.mkdir(parents=True, exist_ok=True)
+    episode_path = substack_episodes_dir / episode_filename
+    stitch_audio(segment_paths, episode_path)
+
+    # ── Stage 8: Publish ──────────────────────────────
+    logger.info("Stage 8: Updating Substack RSS feed")
+    metadata = get_episode_metadata(
+        episode_path,
+        PAGES_BASE_URL,
+        podcast_title=SUBSTACK_PODCAST_TITLE,
+        episode_url_subpath=f"{SUBSTACK_FEED_DIR.removeprefix('site/')}/episodes",
+        guid_prefix="substack",
+    )
+    rss_item = create_episode_item(metadata)
+    feed_path = ROOT_DIR / SUBSTACK_FEED_DIR / "feed.xml"
+    feed_self_url = (
+        f"{PAGES_BASE_URL}/{SUBSTACK_FEED_DIR.removeprefix('site/')}/feed.xml"
+        if PAGES_BASE_URL else ""
+    )
+    channel_config = {
+        "PAGES_BASE_URL": PAGES_BASE_URL,
+        "PODCAST_TITLE": SUBSTACK_PODCAST_TITLE,
+        "PODCAST_DESCRIPTION": "Weekly digest of Fayad's paid Substack PM newsletters — auto-generated.",
+        "PODCAST_AUTHOR": PODCAST_AUTHOR,
+        "PODCAST_EMAIL": PODCAST_EMAIL,
+        "FEED_SELF_URL": feed_self_url,
+    }
+    update_feed(feed_path, rss_item, channel_config=channel_config)
+
+    # ── Stage 9: Persist seen IDs ─────────────────────
+    src.mark_processed()
+
+    # ── Stage 10: Email companion (M4) ────────────────
+    logger.info("Stage 10: Email companion send pending M4 implementation")
+
+    result["status"] = "published"
+    result["episode_title"] = metadata["title"]
+    result["mp3_path"] = str(episode_path)
+    result["duration"] = metadata["duration"]
+    logger.info("Published: %s (%s)", metadata["title"], metadata["duration"])
     return result
 
 

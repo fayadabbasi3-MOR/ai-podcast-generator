@@ -1,3 +1,4 @@
+import argparse
 import json
 import logging
 import shutil
@@ -12,6 +13,7 @@ from src.config import (
     PAGES_BASE_URL,
     SITE_DIR,
     SOURCES,
+    SUBSTACK_LOOKBACK_DAYS,
 )
 from src.ingest import ingest_all
 from src.publish import (
@@ -25,8 +27,20 @@ from src.tts import synthesize_script
 
 logger = logging.getLogger(__name__)
 
+VALID_SOURCES = ("ai_industry", "substack_pm")
 
-def run_pipeline(dry_run: bool = False) -> dict:
+
+def run_pipeline(source: str = "ai_industry", dry_run: bool = False) -> dict:
+    """Dispatch by source. ai_industry uses the original pipeline; substack_pm
+    routes through the new path (full implementation lands in M3)."""
+    if source == "ai_industry":
+        return _run_ai_industry(dry_run=dry_run)
+    if source == "substack_pm":
+        return _run_substack_pm(dry_run=dry_run)
+    raise ValueError(f"Unknown source: {source!r} (expected one of {VALID_SOURCES})")
+
+
+def _run_ai_industry(dry_run: bool = False) -> dict:
     """Execute the full pipeline.
 
     1. ingest_all() — fetch content from all sources
@@ -121,12 +135,52 @@ def run_pipeline(dry_run: bool = False) -> dict:
     return result
 
 
+def _run_substack_pm(dry_run: bool = False) -> dict:
+    """Substack PM pipeline. Fetches newsletters via Gmail; full summarize/
+    scriptgen path lands in M3. For now, dry-run prints the fetched items
+    and exits cleanly so the wiring is verifiable end-to-end."""
+    from src.sources.substack_pm import SubstackPMSource
+
+    result = {
+        "status": "skipped",
+        "source": "substack_pm",
+        "items_count": 0,
+        "errors": [],
+    }
+
+    logger.info("Stage 1: Ingesting Substack newsletters via Gmail")
+    src = SubstackPMSource()
+    items = src.fetch(since_days=SUBSTACK_LOOKBACK_DAYS)
+    result["items_count"] = len(items)
+    logger.info("Ingested %d newsletters", len(items))
+
+    if len(items) == 0:
+        logger.warning("No newsletters this week — would send 'no newsletters' email")
+        return result
+
+    if dry_run:
+        result["status"] = "dry_run"
+        for item in items:
+            print(f"[{item['source_meta'].get('publication','')}] {item['title']}")
+            print(f"  {item['url']}")
+            print(f"  {len(item['body_text'])} chars body")
+        return result
+
+    logger.error("Substack non-dry-run path not implemented yet (M3 work)")
+    result["status"] = "not_implemented"
+    return result
+
+
 if __name__ == "__main__":
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
 
-    dry_run = "--dry-run" in sys.argv
-    result = run_pipeline(dry_run=dry_run)
-    print(json.dumps(result, indent=2))
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--source", choices=VALID_SOURCES, default="ai_industry")
+    parser.add_argument("--dry-run", action="store_true")
+    args = parser.parse_args()
+
+    result = run_pipeline(source=args.source, dry_run=args.dry_run)
+    print(json.dumps(result, indent=2, default=str))

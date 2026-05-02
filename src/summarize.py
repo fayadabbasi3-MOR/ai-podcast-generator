@@ -205,6 +205,8 @@ def summarize_one(item: ContentItem, prompt_file: str = "summarize_substack.txt"
     Returns a NewsletterSummary dict. Retry-once on bad JSON; raises on
     persistent failure.
     """
+    item_label = item.get("url") or item.get("title") or item.get("id") or "<unknown>"
+
     system_prompt = (PROMPTS_DIR / prompt_file).read_text()
     user_message = json.dumps({
         "title": item.get("title", ""),
@@ -222,7 +224,7 @@ def summarize_one(item: ContentItem, prompt_file: str = "summarize_substack.txt"
     if parsed and _validate_newsletter_summary(parsed):
         return parsed
 
-    logger.warning("Invalid summarize_one output for %s — retrying", item.get("url"))
+    logger.warning("Invalid summarize_one output for %s — retrying", item_label)
     messages.append({"role": "assistant", "content": raw})
     messages.append({"role": "user", "content": "Return ONLY valid JSON matching the specified shape."})
     raw = _call_claude(client, system_prompt, messages)
@@ -230,20 +232,32 @@ def summarize_one(item: ContentItem, prompt_file: str = "summarize_substack.txt"
     if parsed and _validate_newsletter_summary(parsed):
         return parsed
 
-    raise ValueError(f"summarize_one failed for {item.get('url')}: last response: {raw[:200]}")
+    raise ValueError(f"summarize_one failed for {item_label}: last response: {raw[:300]}")
 
 
 def _validate_newsletter_summary(data: dict) -> bool:
-    if not isinstance(data, dict):
-        return False
-    required = {"title", "publication", "url", "one_liner", "summary", "key_takeaways"}
-    if not required.issubset(data.keys()):
-        return False
-    if not isinstance(data["one_liner"], str) or len(data["one_liner"]) > 140:
-        return False
-    if not isinstance(data["key_takeaways"], list):
+    reason = _newsletter_summary_rejection(data)
+    if reason:
+        logger.warning("Newsletter summary rejected: %s", reason)
         return False
     return True
+
+
+def _newsletter_summary_rejection(data: dict) -> str | None:
+    """Return the rejection reason as a string, or None if valid."""
+    if not isinstance(data, dict):
+        return f"not a dict: {type(data).__name__}"
+    required = {"title", "publication", "url", "one_liner", "summary", "key_takeaways"}
+    missing = required - set(data.keys())
+    if missing:
+        return f"missing keys: {sorted(missing)}"
+    if not isinstance(data["one_liner"], str):
+        return f"one_liner not str: {type(data['one_liner']).__name__}"
+    if len(data["one_liner"]) > 140:
+        return f"one_liner length {len(data['one_liner'])} > 140"
+    if not isinstance(data["key_takeaways"], list):
+        return f"key_takeaways not list: {type(data['key_takeaways']).__name__}"
+    return None
 
 
 # ── Substack: aggregate summary ───────────────────────────────────────

@@ -54,6 +54,25 @@ class TestFindCanonicalUrl:
         url = _find_canonical_url(soup, html)
         assert url == "https://lenny.substack.com/p/some-slug"
 
+    def test_falls_back_to_any_substack_domain_url(self):
+        """No /p/ pattern, but a substack.com domain URL is present."""
+        html = '<html><body><a href="https://producttalk.substack.com/post/123-something">read</a></body></html>'
+        soup = BeautifulSoup(html, "lxml")
+        url = _find_canonical_url(soup, html)
+        assert "substack.com" in url
+
+    def test_skips_chrome_substack_links(self):
+        """Account/profile/redirect Substack URLs aren't valid post canonicals."""
+        html = (
+            '<html><body>'
+            '<a href="https://example.substack.com/account">Manage</a>'
+            '</body></html>'
+        )
+        soup = BeautifulSoup(html, "lxml")
+        # Should not return the /account URL
+        url = _find_canonical_url(soup, html)
+        assert "/account" not in url or url == ""
+
     def test_returns_empty_when_none_found(self):
         html = "<html><body>nothing here</body></html>"
         soup = BeautifulSoup(html, "lxml")

@@ -108,6 +108,57 @@ class TestSubstackDryRun:
         assert result["status"] == "no_content"
         assert result["items_count"] == 0
 
+    @patch("src.pipeline.SubstackPMSource")
+    @patch("src.pipeline.summarize_one")
+    @patch("src.pipeline.aggregate_summarize")
+    @patch("src.pipeline.load_memory_slices")
+    @patch("src.pipeline.generate_action_items")
+    @patch("src.pipeline.generate_substack_script")
+    def test_skips_failing_summarize_continues_with_rest(
+        self, mock_script, mock_actions, mock_load_mem, mock_aggregate,
+        mock_summarize_one, mock_src_cls, capsys,
+    ):
+        urls = ["https://l.com/p/1", "https://l.com/p/2", "https://l.com/p/3"]
+        items = [_content_item(f"m{i}", f"Post {i}", urls[i]) for i in range(3)]
+        src_instance = MagicMock()
+        src_instance.fetch.return_value = items
+        mock_src_cls.return_value = src_instance
+
+        # Second summary fails; first and third succeed
+        mock_summarize_one.side_effect = [
+            _newsletter_summary(urls[0]),
+            ValueError("validation rejected: one_liner length 200 > 140"),
+            _newsletter_summary(urls[2]),
+        ]
+        mock_aggregate.return_value = _aggregate()
+        mock_load_mem.return_value = {"role": "PM", "projects": "Port"}
+        mock_actions.return_value = _action_items([urls[0], urls[2]])
+        mock_script.return_value = _script_segments()
+
+        result = run_pipeline(source="substack_pm", dry_run=True)
+
+        assert result["status"] == "dry_run"
+        # 3 items fetched, but only 2 made it to script generation
+        assert result["items_count"] == 3
+        # aggregate should be called with only the 2 successful summaries
+        per_item_arg = mock_aggregate.call_args.args[0]
+        assert len(per_item_arg) == 2
+
+    @patch("src.pipeline.SubstackPMSource")
+    @patch("src.pipeline.summarize_one")
+    def test_all_summaries_failing_aborts(self, mock_summarize_one, mock_src_cls):
+        urls = ["https://l.com/p/1", "https://l.com/p/2"]
+        items = [_content_item(f"m{i}", f"Post {i}", urls[i]) for i in range(2)]
+        src_instance = MagicMock()
+        src_instance.fetch.return_value = items
+        mock_src_cls.return_value = src_instance
+        mock_summarize_one.side_effect = ValueError("bad")
+
+        result = run_pipeline(source="substack_pm", dry_run=True)
+
+        assert result["status"] == "all_skipped"
+        assert result["errors"][0]["stage"] == "summarize"
+
     @patch("src.pipeline.send_empty_week_email")
     @patch("src.pipeline._try_smtp_creds")
     @patch("src.pipeline.SubstackPMSource")

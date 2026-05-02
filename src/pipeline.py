@@ -220,7 +220,27 @@ def _run_substack_pm(dry_run: bool = False) -> dict:
 
     # ── Stage 2: Per-newsletter summaries ─────────────
     logger.info("Stage 2: Per-newsletter summaries")
-    per_item = [summarize_one(item) for item in items]
+    per_item = []
+    skipped_summarize = 0
+    for item in items:
+        try:
+            per_item.append(summarize_one(item))
+        except Exception as e:
+            logger.warning(
+                "Skipping newsletter %s due to summarize failure: %s",
+                item.get("title") or item.get("id"), e,
+            )
+            skipped_summarize += 1
+    logger.info(
+        "Summarize complete: %d succeeded, %d skipped",
+        len(per_item), skipped_summarize,
+    )
+
+    if not per_item:
+        logger.error("All %d newsletters failed to summarize — aborting", len(items))
+        result["status"] = "all_skipped"
+        result["errors"].append({"stage": "summarize", "skipped": skipped_summarize})
+        return result
 
     # ── Stage 3: Aggregate ────────────────────────────
     logger.info("Stage 3: Aggregate summary")

@@ -15,7 +15,8 @@ CHROME_PATTERNS = [
     re.compile(r"\bget the app\b", re.IGNORECASE),
 ]
 
-SUBSTACK_POST_RE = re.compile(r"https?://[^\s\"']+/p/[a-z0-9\-]+", re.IGNORECASE)
+SUBSTACK_POST_RE = re.compile(r"https?://[^\s\"'<>]+/p/[A-Za-z0-9\-_]+", re.IGNORECASE)
+SUBSTACK_DOMAIN_RE = re.compile(r"https?://[a-z0-9\-]+\.substack\.com/[^\s\"'<>]*", re.IGNORECASE)
 
 
 class BodyTooShort(ValueError):
@@ -54,7 +55,25 @@ def _find_canonical_url(soup: BeautifulSoup, html: str) -> str:
     if match:
         return match.group(0)
 
+    for domain_match in SUBSTACK_DOMAIN_RE.finditer(html):
+        candidate = domain_match.group(0)
+        if not _is_chrome_link(candidate):
+            return candidate
+
+    for anchor in soup.find_all("a", href=True):
+        href = anchor["href"].strip()
+        if "substack.com" in href.lower() and not _is_chrome_link(href):
+            return href
+
     return ""
+
+
+_CHROME_PATH_FRAGMENTS = ("/account", "/subscribe", "/profile", "/app", "/redirect")
+
+
+def _is_chrome_link(href: str) -> bool:
+    lower = href.lower()
+    return any(frag in lower for frag in _CHROME_PATH_FRAGMENTS)
 
 
 def _extract_body_text(html: str, soup: BeautifulSoup) -> str:

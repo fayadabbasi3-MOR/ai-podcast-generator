@@ -1,4 +1,4 @@
-name: Generate Weekly Podcast Episode
+name: AI Industry Weekly
 
 on:
   schedule:
@@ -43,8 +43,11 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcloud-tts.json
           PAGES_BASE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/site
+          GMAIL_SENDER: ${{ secrets.GMAIL_SENDER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          NOTIFY_EMAIL: ${{ secrets.NOTIFY_EMAIL }}
           LOG_LEVEL: INFO
-        run: python -m src.pipeline
+        run: python -m src.pipeline --source ai_industry
 
       # ── Publish Episode ────────────────────────────
       - name: Commit and push episode
@@ -100,3 +103,13 @@ jobs:
       - name: Clean up credentials
         if: always()
         run: rm -f /tmp/gcloud-tts.json
+
+      # ── Failure alert ──────────────────────────────
+      - name: Slack alert on failure
+        if: failure() && env.SLACK_WEBHOOK_INBOX != ''
+        env:
+          SLACK_WEBHOOK_INBOX: ${{ secrets.SLACK_WEBHOOK_INBOX }}
+        run: |
+          curl -s -X POST -H 'Content-Type: application/json' \
+            --data "{\"text\":\":rotating_light: Workflow *${{ github.workflow }}* failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}" \
+            "$SLACK_WEBHOOK_INBOX"

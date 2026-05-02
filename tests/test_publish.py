@@ -307,7 +307,7 @@ class TestWorkflowConsistency:
 
         root = Path(__file__).resolve().parent.parent
         gitignore_path = root / ".gitignore"
-        workflow_path = root / ".github" / "workflows" / "generate-episode.yml"
+        workflow_path = root / ".github" / "workflows" / "ai-industry-weekly.yml"
 
         if not gitignore_path.exists() or not workflow_path.exists():
             pytest.skip("Missing .gitignore or workflow file")

@@ -194,6 +194,7 @@ SUBSTACK_LOOKBACK_DAYS = 7
 SUBSTACK_PER_SEGMENT_TARGET_WORDS = 750
 SUBSTACK_FEED_DIR = "site/substack"
 SUBSTACK_PODCAST_TITLE = "Substack PM Weekly"
+SUBSTACK_MAX_NEWSLETTERS_PER_RUN = 10  # backstop: keep most-recent N if more arrive in a week
 STATE_DIR = "state"
 SUBSTACK_SEEN_FILE = "state/substack_seen.json"
 ACTION_ITEMS_COUNT = 3

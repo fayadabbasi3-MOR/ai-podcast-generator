@@ -253,8 +253,8 @@ def _newsletter_summary_rejection(data: dict) -> str | None:
         return f"missing keys: {sorted(missing)}"
     if not isinstance(data["one_liner"], str):
         return f"one_liner not str: {type(data['one_liner']).__name__}"
-    if len(data["one_liner"]) > 140:
-        return f"one_liner length {len(data['one_liner'])} > 140"
+    if len(data["one_liner"]) > 200:
+        return f"one_liner length {len(data['one_liner'])} > 200"
     if not isinstance(data["key_takeaways"], list):
         return f"key_takeaways not list: {type(data['key_takeaways']).__name__}"
     return None

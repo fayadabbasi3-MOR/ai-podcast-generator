@@ -5,7 +5,12 @@ from datetime import datetime, timezone
 from email.utils import parseaddr
 from pathlib import Path
 
-from src.config import ROOT_DIR, SUBSTACK_GMAIL_LABEL, SUBSTACK_SEEN_FILE
+from src.config import (
+    ROOT_DIR,
+    SUBSTACK_GMAIL_LABEL,
+    SUBSTACK_MAX_NEWSLETTERS_PER_RUN,
+    SUBSTACK_SEEN_FILE,
+)
 from src.sources import ContentItem
 from src.sources._gmail_client import fetch_messages
 from src.sources._substack_body import BodyTooShort, extract_post
@@ -67,6 +72,18 @@ class SubstackPMSource:
             "substack_pm: %d items extracted, %d duplicates, %d short/parse-skipped",
             len(items), skipped_dup, skipped_short,
         )
+
+        if len(items) > SUBSTACK_MAX_NEWSLETTERS_PER_RUN:
+            items.sort(key=lambda it: it["published"], reverse=True)
+            dropped = items[SUBSTACK_MAX_NEWSLETTERS_PER_RUN:]
+            items = items[:SUBSTACK_MAX_NEWSLETTERS_PER_RUN]
+            kept_ids = {it["id"] for it in items}
+            self._pending_seen_ids = [i for i in self._pending_seen_ids if i in kept_ids]
+            logger.warning(
+                "substack_pm: capped at %d items (dropped %d oldest); "
+                "they'll re-appear next run if still within lookback window",
+                SUBSTACK_MAX_NEWSLETTERS_PER_RUN, len(dropped),
+            )
         return items
 
     def mark_processed(self, item_ids: list[str] | None = None) -> None:

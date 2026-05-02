@@ -83,16 +83,31 @@ class TestSummarizeOne:
             summarize_one(_content_item())
 
     @patch("src.summarize.anthropic.Anthropic")
-    def test_rejects_one_liner_over_140(self, anthropic_cls):
+    def test_rejects_one_liner_over_200(self, anthropic_cls):
+        """The validator allows up to 200 chars (loosened from 140 after smoke-test
+        showed the model consistently overshooting by 1-12 chars)."""
         bad = json.dumps({
             "title": "x", "publication": "x", "author": None, "url": "https://x.com",
-            "one_liner": "x" * 200,
+            "one_liner": "x" * 250,
             "summary": "x" * 30,
             "key_takeaways": [],
         })
         _mock_claude(anthropic_cls, [bad, _ok_summary_json()])
         result = summarize_one(_content_item())
-        assert len(result["one_liner"]) <= 140
+        assert len(result["one_liner"]) <= 200
+
+    @patch("src.summarize.anthropic.Anthropic")
+    def test_accepts_one_liner_between_140_and_200(self, anthropic_cls):
+        """The model commonly outputs 141-160 char one_liners; accept those."""
+        good_long = json.dumps({
+            "title": "x", "publication": "x", "author": None, "url": "https://x.com",
+            "one_liner": "x" * 175,
+            "summary": "x" * 30,
+            "key_takeaways": ["a"],
+        })
+        _mock_claude(anthropic_cls, [good_long])
+        result = summarize_one(_content_item())
+        assert len(result["one_liner"]) == 175
 
 
 class TestAggregateSummarize:

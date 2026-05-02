@@ -86,6 +86,23 @@ class TestFetch:
         assert "label:Substack/PM" in query
         assert "newer_than:14d" in query
 
+    @patch("src.sources.substack_pm.SUBSTACK_MAX_NEWSLETTERS_PER_RUN", 3)
+    @patch("src.sources.substack_pm.fetch_messages")
+    def test_caps_at_max_keeps_newest(self, mock_fetch, state_path):
+        # 5 messages with monotonically increasing internal_date (newest last)
+        mock_fetch.return_value = [
+            _gmail_message(f"m{i}", f"Title {i}", "x@substack.com", internal_date=str(1700000000000 + i * 86400000))
+            for i in range(5)
+        ]
+        src = SubstackPMSource(seen_file_path=state_path)
+        items = src.fetch()
+
+        assert len(items) == 3
+        kept_ids = {it["id"] for it in items}
+        assert kept_ids == {"m2", "m3", "m4"}
+        # _pending_seen_ids should also be filtered to kept items
+        assert set(src._pending_seen_ids) == kept_ids
+
 
 class TestMarkProcessed:
     @patch("src.sources.substack_pm.fetch_messages")
